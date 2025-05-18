@@ -1,0 +1,16 @@
+Your task is to migrate the WDIO test cases in the workspace to Playwright. Follow the below guidelines to do the migration -
+ 
+1. First make a config file following the rules that are relevant checking the wdio.conf.ts
+2. Only configure Chrome browser as a playwright project as the beginning.
+3. Make a directory naming /src/packages/e2e/src/playwright and use this as a parent directory for all the migrated codebase.
+4. Place all the converted tests under /tests.
+5. Then, Start migrating each spec one by one to playwright compatible test. Follow these subtasks closely for migration of each spec -
+    5a. You will encounter import statements to page object models. Convert them first and use the updated imports while converting specs
+    5b. Updated pages should be moved to /pages
+    5c. Check if there is a need to convert files imported utilities. If yes, updated utils should be moved to /utils. else do nothing
+    5d. After conversion of each spec, ask for confirmation from user to proceed further.
+    
+ 
+6. Finally update the package json to add playwright test command which can be used to run these tests
+ 
+Follow these steps in order. Do not go to next step before the previous step is fully completed. Do not deviate from these steps.
