@@ -1,0 +1,162 @@
+LaunchDarkly Generator Documentation
+The addLaunchDarkly generator is a codemod that integrates LaunchDarkly feature flag functionality into a web application. It performs several code changes across multiple files to set up LaunchDarkly in the requested repository. Below is a detailed documentation of each step and the code changes it makes.
+
+2. File Creation
+The generator creates the following files in the src/launchdarkly directory:
+
+2.1. getFlag.ts
+import type { LDContext } from '@launchdarkly/js-sdk-common';
+import { getClient } from './getClient';
+
+/**
+ * Fetch flag value by checking project client first, then shared client if not found.
+ * @param flagKey The flag key to evaluate.
+ * @param defaultValue Fallback value if the flag isn't found.
+ * @param context The LDContext for evaluation.
+ */
+export async function getFeatureFlag<T = boolean>(
+  flagKey: string,
+  defaultValue: T,
+  context: LDContext = { key: 'anonymous' }
+): Promise<T> {
+  // Attempt evaluation with project client first
+  try {
+    const projectClient = await getClient('project');
+    const projectResult = await projectClient?.variationDetail(flagKey, context, defaultValue);
+    if (projectResult?.reason.kind !== 'ERROR' || projectResult.reason.errorKind !== 'FLAG_NOT_FOUND') {
+      return projectResult?.value;
+    }
+  } catch (err) {
+    LOG.error(`Project client error for flag ${flagKey}:`, err);
+  }
+
+  return defaultValue;
+}
+
+
+2.2. getClient.ts
+import { getClient } from './clientProvider.mjs';
+
+export { getClient };
+
+
+2.3. clientProvider.ts (App Router)
+
+import Logger from '@logging/Logger';
+import type { LDClient, LDOptions } from '@launchdarkly/node-server-sdk';
+import { init } from '@launchdarkly/node-server-sdk';
+
+declare global {
+  interface Global {
+    launchDarklyConfig: LaunchDarklyConfig | undefined;
+    launchDarklyClients: Map<string, LDClient>;
+  }
+}
+
+const PROJECT_LOG = new Logger('project-launchDarkly-client');
+
+const loggers = {
+  project: PROJECT_LOG
+};
+
+type LDClientType = 'project' | 'shared';
+export interface LaunchDarklyConfig {
+  sdkKeys: {
+    project: string;
+    shared?: string;
+  };
+  options?: LDOptions;
+}
+
+export async function initLaunchDarkly(config: LaunchDarklyConfig): Promise<void> {
+  global.launchDarklyConfig = config;
+  global.launchDarklyClients = new Map();
+  const projectClients = Object.keys(config.sdkKeys).map(key => initClient(key as LDClientType));
+  await Promise.all(projectClients);
+}
+
+async function initClient(clientType: LDClientType): Promise<void> {
+  // Initialize client with SDK key
+}
+
+export async function getClient(clientType: LDClientType = 'project'): Promise<LDClient | undefined> {
+  if (!global.launchDarklyClients?.has(clientType)) {
+    throw new Error(`LaunchDarkly client for the clientType: ${clientType} is not initialized.`);
+  }
+  return global.launchDarklyClients?.get(clientType);
+}
+
+
+
+3. Entry Point Modifications
+3.1. App Router (instrumentation.ts)
+The generator modifies the instrumentation.ts file to initialize LaunchDarkly:
+
+// Original code
+const [{ instrument }] = await Promise.all([
+  import('@instrumentation/module')
+]);
+
+await instrument(LOG);
+
+// Modified code
+const [{ instrument }, { initLaunchDarkly }] = await Promise.all([
+  import('@instrumentation/module'),
+  import('./launchdarkly/clientProvider')
+]);
+
+await instrument(LOG);
+await initLaunchDarkly({
+  sdkKeys: {
+    project: process.env.LAUNCHDARKLY_PROJECT_SDK_KEY!
+  },
+  options: { timeout: 10 }
+});
+
+
+4. Adding Experimental Package Support (App Router)
+For App Router, the generator adds LaunchDarkly to the experimental packages list in next.config.mjs:
+
+// Original code
+experimental: {
+  serverComponentsExternalPackages: ['@package1', '@package2']
+}
+
+// Modified code
+experimental: {
+  serverComponentsExternalPackages: ['@package1', '@package2', '@launchdarkly/node-server-sdk']
+}
+
+
+
+6. Adding Secrets to Bin Files
+The generator adds LaunchDarkly secrets to the project's bin files:
+
+// Original code
+const overrides = {
+  secrets: {
+    parameterStore: {
+      // existing secrets
+    }
+  }
+};
+
+// Modified code
+const overrides = {
+  secrets: {
+    parameterStore: {
+      // existing secrets
+      LAUNCHDARKLY_PROJECT_SDK_KEY: `/${projectName}/LAUNCHDARKLY_PROJECT_SDK_KEY/${env}`
+    }
+  }
+};
+
+
+7. Adding Environment Variables
+The generator adds LaunchDarkly SDK keys to the .env.local file:
+p
+LAUNCHDARKLY_PROJECT_SDK_KEY=<REPLACE_THIS_WITH_PROJECT_SDK_KEY>
+LAUNCHDARKLY_SHARED_SDK_KEY=<REPLACE_THIS_WITH_SHARED_SDK_KEY>
+
+
+This generator provides a comprehensive integration of LaunchDarkly feature flags into web applications, supporting both App Router and Pages Router architectures, with options for project-specific and shared feature flags.
