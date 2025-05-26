@@ -1,10 +1,11 @@
-LaunchDarkly Generator Documentation
-The addLaunchDarkly generator is a codemod that integrates LaunchDarkly feature flag functionality into a web application. It performs several code changes across multiple files to set up LaunchDarkly in the requested repository. Below is a detailed documentation of each step and the code changes it makes.
+You are a LaunchDarkly feature generator for applications. Your task is to add LaunchDarkly feature to the given application using the below codemod or steps. Below is a detailed documentation of each step and the code changes you have to make.
 
-2. File Creation
+NOTE - Tech stack used: Next JS app router, TypeScript. Use ECMAScript modules (ESM) syntax for imports and exports. Do not use CommonJS syntax.
+
+step 1. File Creation
 The generator creates the following files in the src/launchdarkly directory:
 
-2.1. getFlag.ts
+new file 1.1. getFlag.ts
 import type { LDContext } from '@launchdarkly/js-sdk-common';
 import { getClient } from './getClient';
 
@@ -34,13 +35,13 @@ export async function getFeatureFlag<T = boolean>(
 }
 
 
-2.2. getClient.ts
+new file 1.2. getClient.ts
 import { getClient } from './clientProvider.mjs';
 
 export { getClient };
 
 
-2.3. clientProvider.ts (App Router)
+new file 1.3. clientProvider.ts (App Router)
 
 import Logger from '@logging/Logger';
 import type { LDClient, LDOptions } from '@launchdarkly/node-server-sdk';
@@ -68,6 +69,16 @@ export interface LaunchDarklyConfig {
   options?: LDOptions;
 }
 
+/**
+ * Initialize LaunchDarkly clients for both project and shared types.
+ * @param config - The LaunchDarkly configuration.
+ * @param config.sdkKeys - The SDK keys for project and shared clients.
+ * @param config.sdkKeys.project - The SDK key for the project client.
+ * @param config.sdkKeys.shared - The SDK key for the shared client.
+ * @param config.options - The LaunchDarkly client options.
+ * @param config.options.timeout - The timeout for client initialization.
+ * @returns A promise that resolves when the clients are initialized.
+ */
 export async function initLaunchDarkly(config: LaunchDarklyConfig): Promise<void> {
   global.launchDarklyConfig = config;
   global.launchDarklyClients = new Map();
@@ -75,10 +86,34 @@ export async function initLaunchDarkly(config: LaunchDarklyConfig): Promise<void
   await Promise.all(projectClients);
 }
 
+/**
+ * Initialize a LaunchDarkly client for the given client type.
+ * @param clientType - The client type: project or shared.
+ */
 async function initClient(clientType: LDClientType): Promise<void> {
-  // Initialize client with SDK key
+  const { sdkKeys, options } = global.launchDarklyConfig as LaunchDarklyConfig;
+  if (!global.launchDarklyClients?.has(clientType)) {
+    const LOG = loggers[clientType];
+    try {
+      const sdkKey = sdkKeys[clientType];
+      if (!sdkKey) {
+        LOG.error(`SDK key is missing. Cannot initialize LaunchDarkly client for the clientType: ${clientType}`);
+        return;
+      }
+      const client = init(sdkKey, { logger: LOG });
+      await client.waitForInitialization({ timeout: options?.timeout ?? 10 });
+      global.launchDarklyClients?.set(clientType, client);
+    } catch (err) {
+      LOG.error(`Error while initializing the LaunchDarkly client for the clientType: ${clientType}`, err);
+    }
+  }
 }
 
+/**
+ * Returns the LaunchDarkly client for a given client type.
+ * @param clientType - The client type: project or shared. By default, it is project.
+ * @returns The initialized LaunchDarkly client.
+ */
 export async function getClient(clientType: LDClientType = 'project'): Promise<LDClient | undefined> {
   if (!global.launchDarklyClients?.has(clientType)) {
     throw new Error(`LaunchDarkly client for the clientType: ${clientType} is not initialized.`);
@@ -87,9 +122,8 @@ export async function getClient(clientType: LDClientType = 'project'): Promise<L
 }
 
 
-
-3. Entry Point Modifications
-3.1. App Router (instrumentation.ts)
+step 2. Entry Point Modifications
+step 2.1. App Router (instrumentation.ts)
 The generator modifies the instrumentation.ts file to initialize LaunchDarkly:
 
 // Original code
@@ -114,7 +148,7 @@ await initLaunchDarkly({
 });
 
 
-4. Adding Experimental Package Support (App Router)
+step 3. Adding Experimental Package Support (App Router)
 For App Router, the generator adds LaunchDarkly to the experimental packages list in next.config.mjs:
 
 // Original code
@@ -129,8 +163,17 @@ experimental: {
 
 
 
-6. Adding Secrets to Bin Files
-The generator adds LaunchDarkly secrets to the project's bin files:
+step 4. Adding Secrets to Bin Files
+The generator adds LaunchDarkly secrets to the project's bin files. There would be several bin files present in app/bin which needs to be edited with the mentioned env variable below (do not update commonProps file) -
+- filename - env variable
+- ci      - development
+- ld50    - load
+- pr50    - production
+- pr53    - production-eu
+- pr51    - production
+- pr54    - production-eu
+- sandbox - staging
+- sg50    - staging
 
 // Original code
 const overrides = {
@@ -152,11 +195,13 @@ const overrides = {
 };
 
 
-7. Adding Environment Variables
+step 5. Adding Environment Variables
 The generator adds LaunchDarkly SDK keys to the .env.local file:
-p
+
 LAUNCHDARKLY_PROJECT_SDK_KEY=<REPLACE_THIS_WITH_PROJECT_SDK_KEY>
 LAUNCHDARKLY_SHARED_SDK_KEY=<REPLACE_THIS_WITH_SHARED_SDK_KEY>
 
+Do not delete existing .env.local variables.
 
-This generator provides a comprehensive integration of LaunchDarkly feature flags into web applications, supporting both App Router and Pages Router architectures, with options for project-specific and shared feature flags.
+
+These step provides a comprehensive integration of LaunchDarkly feature flags into web applications, supporting Next JS app router. Do not deviate from the above given steps. Also, DO NOT ASK user any follow up questions. The task is marked completed once you have generated all the required code to add LaunchDarkly.
